@@ -143,10 +143,13 @@ thread_tick (void)
 void
 thread_wakeup (struct thread *t, void *aux UNUSED) 
 {
-  if (t->status == THREAD_BLOCKED && t->sleep_ticks > 0)
+  if (t->status == THREAD_BLOCKED && t->wakeup_ticks > 0)
     {
-      if (--t->sleep_ticks == 0)
-        thread_unblock (t);
+      if (t->wakeup_ticks <= timer_ticks ())
+        {
+          t->wakeup_ticks = 0;
+          thread_unblock (t);
+        }
     }
 }
 
@@ -474,7 +477,7 @@ init_thread (struct thread *t, const char *name, int priority)
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
   t->magic = THREAD_MAGIC;
-  t->sleep_ticks = 0;
+  t->wakeup_ticks = 0;
 
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);

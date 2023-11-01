@@ -93,9 +93,11 @@ timer_sleep (int64_t ticks)
   if (ticks <= 0) 
     return;
 
+  int64_t cur_ticks = timer_ticks ();
+
   enum intr_level old_level = intr_disable ();
   struct thread *cur = thread_current ();
-  cur->sleep_ticks = ticks;
+  cur->wakeup_ticks = cur_ticks + ticks;
   thread_block();
   intr_set_level (old_level);
 }
