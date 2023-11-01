@@ -93,6 +93,8 @@ struct thread
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
 
+    int64_t sleep_ticks;                /* Left ticks until wakeup. */
+
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
@@ -111,6 +113,7 @@ void thread_init (void);
 void thread_start (void);
 
 void thread_tick (void);
+void thread_wakeup (struct thread *t, void *aux);
 void thread_print_stats (void);
 
 typedef void thread_func (void *aux);
