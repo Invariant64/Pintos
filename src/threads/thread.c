@@ -22,7 +22,7 @@
 
 /* List of processes in THREAD_READY state, that is, processes
    that are ready to run but not actually running. */
-static struct list ready_list;
+struct list ready_list;
 
 /* List of all processes.  Processes are added to this list
    when they are first scheduled and removed when they exit. */
@@ -73,7 +73,7 @@ static tid_t allocate_tid (void);
 
 /* Returns true if value A is less than value B, false
    otherwise. */
-static bool priority_less (const struct list_elem *a, 
+bool priority_less (const struct list_elem *a, 
                            const struct list_elem *b, 
                            void *aux UNUSED);
 
@@ -359,9 +359,12 @@ void
 thread_set_priority (int new_priority) 
 {
   thread_current ()->priority = new_priority;
-  if (new_priority < list_entry (list_tail (&ready_list),
-                                 struct thread, elem))
-    thread_yield ();
+  if (!list_empty (&ready_list))
+    {
+      if (new_priority < list_entry (list_back (&ready_list),
+                                   struct thread, elem))
+        thread_yield ();
+    }
 }
 
 /* Returns the current thread's priority. */
@@ -615,7 +618,7 @@ uint32_t thread_stack_ofs = offsetof (struct thread, stack);
 
 /* Returns true if priority A is less than priority B, false
    otherwise. */
-static bool
+bool
 priority_less (const struct list_elem *a_, const struct list_elem *b_,
             void *aux UNUSED) 
 {
