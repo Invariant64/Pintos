@@ -625,5 +625,8 @@ priority_less (const struct list_elem *a_, const struct list_elem *b_,
   const struct thread *a = list_entry (a_, struct thread, elem);
   const struct thread *b = list_entry (b_, struct thread, elem);
   
-  return a->priority < b->priority;
+  /* Same priority threads need to follow FIFO rule, so when
+     new thread's priority equals to any thread in the list,
+     new thread should insert before the old one. */
+  return a->priority <= b->priority;
 }
