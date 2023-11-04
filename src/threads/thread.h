@@ -23,6 +23,7 @@ typedef int tid_t;
 #define PRI_MIN 0                       /* Lowest priority. */
 #define PRI_DEFAULT 31                  /* Default priority. */
 #define PRI_MAX 63                      /* Highest priority. */
+#define PRI_INVALID -1                 /* Invalied priority. */
 
 /* A kernel thread or user process.
 
@@ -94,6 +95,8 @@ struct thread
     struct list_elem elem;              /* List element. */
 
     int64_t wakeup_ticks;                /* Left ticks until wakeup. */
+
+    int previous_priority;               /* Priority before being donated. */
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
