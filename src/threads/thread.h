@@ -23,7 +23,8 @@ typedef int tid_t;
 #define PRI_MIN 0                       /* Lowest priority. */
 #define PRI_DEFAULT 31                  /* Default priority. */
 #define PRI_MAX 63                      /* Highest priority. */
-#define PRI_INVALID -1                 /* Invalied priority. */
+#define PRI_INVALID -1                  /* Invalied priority. */
+#define PRI_STACK_SIZE 8                /* Size of priority stack */
 
 /* A kernel thread or user process.
 
@@ -96,7 +97,9 @@ struct thread
 
     int64_t wakeup_ticks;                /* Left ticks until wakeup. */
 
-    int previous_priority;               /* Priority before being donated. */
+    int previous_priorities[PRI_STACK_SIZE];            /* Stack of donated priorities. */
+    struct lock *locks[PRI_STACK_SIZE];                 /* Stack of locks created donations */
+    int donation_count;                                 /* Count of donations. */
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
@@ -145,6 +148,9 @@ int thread_get_nice (void);
 void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
+
+void thread_donate (struct thread *, struct lock *);
+void thread_release (struct thread *, struct lock *);
 
 bool priority_less (const struct list_elem *a_, 
                            const struct list_elem *b_,

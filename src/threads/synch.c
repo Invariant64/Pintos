@@ -210,21 +210,7 @@ lock_acquire (struct lock *lock)
   struct thread *holder = lock->holder;
   if (holder != NULL && current->priority > holder->priority)
     { 
-      if (holder->previous_priority == PRI_INVALID)
-        holder->previous_priority = holder->priority;
-      holder->priority = current->priority;
-      struct list_elem *e = holder->elem.next;
-      if (e != NULL)
-        {
-          list_remove (&holder->elem);
-          while (e->next != NULL)
-            { 
-              if (priority_less (&holder->elem, e, NULL))
-                break;
-              e = list_next (e);
-            }
-          list_insert (e, &holder->elem);
-        }
+      thread_donate (holder, lock);
     }
   sema_down (&lock->semaphore);
   lock->holder = current;
@@ -262,11 +248,7 @@ lock_release (struct lock *lock)
   ASSERT (lock_held_by_current_thread (lock));
 
   struct thread *holder = lock->holder;
-  if (holder->previous_priority != PRI_INVALID)
-    {
-      holder->priority = holder->previous_priority;
-      holder->previous_priority = PRI_INVALID;
-    }
+  thread_release (holder, lock);
   lock->holder = NULL;
   sema_up (&lock->semaphore);
   

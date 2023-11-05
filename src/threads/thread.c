@@ -491,7 +491,12 @@ init_thread (struct thread *t, const char *name, int priority)
   strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
-  t->previous_priority = PRI_INVALID;
+  for (int i = 0; i < PRI_STACK_SIZE; i++)
+    {
+      t->previous_priorities[i] = PRI_INVALID;
+      t->locks[i] = NULL;
+    }
+  t->donation_count = 0;
   t->magic = THREAD_MAGIC;
   t->wakeup_ticks = 0;
 
@@ -616,6 +621,51 @@ allocate_tid (void)
 /* Offset of `stack' member within `struct thread'.
    Used by switch.S, which can't figure it out on its own. */
 uint32_t thread_stack_ofs = offsetof (struct thread, stack);
+
+/* Current thread donates its priority to thread T. Thread T 
+   saves its old priority and the donater. */
+void 
+thread_donate (struct thread *t, struct lock *l)
+  { 
+    ASSERT (is_thread (t));
+
+    int top = t->donation_count;
+    ASSERT (top < PRI_STACK_SIZE);
+
+    t->previous_priorities[top] = t->priority;
+    t->locks[top] = l;
+    t->priority = thread_get_priority ();
+    t->donation_count++;
+
+    struct list_elem *e = t->elem.next;
+    if (e != NULL)
+      {
+        list_remove (&t->elem);
+        while (e->next != NULL)
+          { 
+            if (priority_less (&t->elem, e, NULL))
+              break;
+            e = list_next (e);
+          }
+        list_insert (e, &t->elem);
+      }
+  }
+
+/* Thread T checks if current priority is donated by current
+   thread. If yes, then release current priority. */
+void thread_release (struct thread *t, struct lock *l)
+  {
+    ASSERT (is_thread (t));
+    
+    int top = t->donation_count;
+    if (top > 0 && t->locks[top - 1] == l)
+      {
+        t->priority = t->previous_priorities[top - 1];
+        t->previous_priorities[top - 1] = PRI_INVALID;
+        t->locks[top - 1] = NULL;
+        t->donation_count--;
+      }
+  }
 
 /* Returns true if priority A is less than priority B, false
    otherwise. */
