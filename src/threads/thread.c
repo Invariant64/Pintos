@@ -632,8 +632,12 @@ uint32_t thread_stack_ofs = offsetof (struct thread, stack);
 /* Thread DONATER donates its priority to thread T. This function
    will create a donation if donation including L doesn't exist. */
 void 
-thread_donate (struct thread *donater, struct thread *t, struct lock *l)
+thread_donate (struct thread *donater, struct thread *t, 
+               struct lock *l, int depth)
 { 
+  /* Limits the depth of chain donation. */
+  ASSERT (depth <= DONATION_MAX_DEPTH);
+
   int p = donater->priority;
   ASSERT (is_thread (donater) && is_thread (t));
   ASSERT (t->priority < p);
@@ -675,7 +679,7 @@ thread_donate (struct thread *donater, struct thread *t, struct lock *l)
 
     if (l->holder->acquired_lock != NULL)
       thread_donate (l->holder, l->holder->acquired_lock->holder, 
-                     l->holder->acquired_lock);
+                     l->holder->acquired_lock, depth + 1);
 }
 
 /* Checks if current priority is donated.

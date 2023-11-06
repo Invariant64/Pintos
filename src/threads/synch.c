@@ -209,7 +209,7 @@ lock_acquire (struct lock *lock)
   struct thread *current = thread_current ();
   struct thread *holder = lock->holder;
   if (holder != NULL && current->priority > holder->priority)
-    thread_donate (thread_current (), holder, lock);
+    thread_donate (thread_current (), holder, lock, 1);
   current->acquired_lock = lock;
   sema_down (&lock->semaphore);
   current->acquired_lock = NULL;
