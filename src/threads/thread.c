@@ -7,6 +7,7 @@
 #include "threads/flags.h"
 #include "threads/interrupt.h"
 #include "threads/intr-stubs.h"
+#include "threads/malloc.h"
 #include "threads/palloc.h"
 #include "threads/switch.h"
 #include "threads/synch.h"
@@ -357,12 +358,21 @@ thread_foreach (thread_action_func *func, void *aux)
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void
 thread_set_priority (int new_priority) 
-{
-  thread_current ()->priority = new_priority;
+{ 
+  struct thread *t = thread_current ();
+  
+  /* If current priority is donated by other threads,
+     then thread_set_priority can not change current
+     priority until every donation is done. */
+  if (t->previous_priority != PRI_INVALID)
+    t->previous_priority = new_priority;
+  else
+    t->priority = new_priority;
+  
   if (!list_empty (&ready_list))
     {
       if (new_priority < list_entry (list_back (&ready_list),
-                                   struct thread, elem))
+                                    struct thread, elem))
         thread_yield ();
     }
 }
@@ -491,12 +501,8 @@ init_thread (struct thread *t, const char *name, int priority)
   strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
-  for (int i = 0; i < PRI_STACK_SIZE; i++)
-    {
-      t->previous_priorities[i] = PRI_INVALID;
-      t->locks[i] = NULL;
-    }
-  t->donation_count = 0;
+  t->previous_priority = PRI_INVALID;
+  list_init (&t->donations);
   t->magic = THREAD_MAGIC;
   t->wakeup_ticks = 0;
 
@@ -623,55 +629,84 @@ allocate_tid (void)
 uint32_t thread_stack_ofs = offsetof (struct thread, stack);
 
 /* Current thread donates its priority to thread T. Thread T 
-   saves its old priority and the donater. */
+   saves its old priority and the lock. */
 void 
 thread_donate (struct thread *t, struct lock *l)
-  { 
-    ASSERT (is_thread (t));
+{ 
+  int p = thread_get_priority ();
+  ASSERT (is_thread (t));
+  ASSERT (t->priority < p);
+  struct list_elem *e;
+  for (e = list_begin (&t->donations); 
+       e != list_end (&t->donations); e = list_next (e))
+    {
+      struct donation *d = list_entry (e, struct donation, elem);
+      if (d->lock == l)
+        {
+          d->priority = (p > d->priority) ? p : d->priority;
+          break;
+        }
+    }
+  if (e == list_end (&t->donations))
+    {
+      struct donation *new_donation = malloc (sizeof *new_donation);
+      new_donation->lock = l;
+      new_donation->priority = p;
+      list_insert_ordered (&t->donations, &new_donation->elem, donation_less, NULL);
+    }
+  if (t->previous_priority == PRI_INVALID)
+    t->previous_priority = t->priority;
+  t->priority = list_entry (list_back (&t->donations), 
+                            struct donation, elem)->priority;
+  
+  e = t->elem.next;
+  if (e != NULL)
+    {
+      list_remove (&t->elem);
+      while (e->next != NULL)
+        { 
+          if (priority_less (&t->elem, e, NULL))
+            break;
+          e = list_next (e);
+        }
+      list_insert (e, &t->elem);
+    }
+}
 
-    int top = t->donation_count;
-    ASSERT (top < PRI_STACK_SIZE);
-
-    t->previous_priorities[top] = t->priority;
-    t->locks[top] = l;
-    t->priority = thread_get_priority ();
-    t->donation_count++;
-
-    struct list_elem *e = t->elem.next;
-    if (e != NULL)
-      {
-        list_remove (&t->elem);
-        while (e->next != NULL)
-          { 
-            if (priority_less (&t->elem, e, NULL))
-              break;
-            e = list_next (e);
-          }
-        list_insert (e, &t->elem);
-      }
-  }
-
-/* Thread T checks if current priority is donated by current
-   thread. If yes, then release current priority. */
-void thread_release (struct thread *t, struct lock *l)
-  {
-    ASSERT (is_thread (t));
-    
-    int top = t->donation_count;
-    if (top > 0 && t->locks[top - 1] == l)
-      {
-        t->priority = t->previous_priorities[top - 1];
-        t->previous_priorities[top - 1] = PRI_INVALID;
-        t->locks[top - 1] = NULL;
-        t->donation_count--;
-      }
-  }
+/* Checks if current priority is donated.
+   If yes, then release current priority. */
+void 
+thread_release (struct lock *l)
+{    
+  struct thread *t = thread_current ();
+  struct list_elem *e;
+  for (e = list_begin (&t->donations); 
+       e != list_end (&t->donations); e = list_next (e))
+    {
+      struct donation *d = list_entry (e, struct donation, elem);
+      if (d->lock == l)
+        {
+          list_remove (e);
+          free (d);
+          break;
+        }
+    }
+  
+  if (list_size (&t->donations) > 0)
+    t->priority = list_entry (list_back (&t->donations), 
+                              struct donation, elem)->priority;
+  else if (t->previous_priority != PRI_INVALID)
+    {
+      t->priority = t->previous_priority;
+      t->previous_priority = PRI_INVALID;
+    }
+}
 
 /* Returns true if priority A is less than priority B, false
    otherwise. */
 bool
 priority_less (const struct list_elem *a_, const struct list_elem *b_,
-            void *aux UNUSED) 
+               void *aux UNUSED) 
 {
   const struct thread *a = list_entry (a_, struct thread, elem);
   const struct thread *b = list_entry (b_, struct thread, elem);
@@ -679,5 +714,17 @@ priority_less (const struct list_elem *a_, const struct list_elem *b_,
   /* Same priority threads need to follow FIFO rule, so when
      new thread's priority equals to any thread in the list,
      new thread should insert before the old one. */
+  return a->priority <= b->priority;
+}
+
+/* Returns true if priority A is less than priority B, false
+   otherwise. */
+bool
+donation_less (const struct list_elem *a_, const struct list_elem *b_,
+               void *aux UNUSED) 
+{
+  const struct donation *a = list_entry (a_, struct donation, elem);
+  const struct donation *b = list_entry (b_, struct donation, elem);
+  
   return a->priority <= b->priority;
 }

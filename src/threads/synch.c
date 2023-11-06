@@ -247,8 +247,8 @@ lock_release (struct lock *lock)
   ASSERT (lock != NULL);
   ASSERT (lock_held_by_current_thread (lock));
 
+  thread_release (lock);
   struct thread *holder = lock->holder;
-  thread_release (holder, lock);
   lock->holder = NULL;
   sema_up (&lock->semaphore);
   

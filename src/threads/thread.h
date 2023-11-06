@@ -24,7 +24,8 @@ typedef int tid_t;
 #define PRI_DEFAULT 31                  /* Default priority. */
 #define PRI_MAX 63                      /* Highest priority. */
 #define PRI_INVALID -1                  /* Invalied priority. */
-#define PRI_STACK_SIZE 8                /* Size of priority stack */
+
+#define DONATION_MAX_DEPTH 8            /* Maximum depth of donation. */
 
 /* A kernel thread or user process.
 
@@ -97,9 +98,8 @@ struct thread
 
     int64_t wakeup_ticks;                /* Left ticks until wakeup. */
 
-    int previous_priorities[PRI_STACK_SIZE];            /* Stack of donated priorities. */
-    struct lock *locks[PRI_STACK_SIZE];                 /* Stack of locks created donations */
-    int donation_count;                                 /* Count of donations. */
+    int previous_priority;               /* Previous priority. */
+    struct list donations;               /* Donations. */
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
@@ -109,6 +109,17 @@ struct thread
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
   };
+
+/* For each thread, one lock can only create one donation,
+   the priority of donation is the highest priority of all
+   donating threads. */
+struct donation
+   {
+      struct list_elem elem;            /* List element. */
+
+      struct lock *lock;                /* Lock causing the donations. */
+      int priority;                     /* Highest priority of all donations of the lock. */
+   };
 
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.
@@ -150,10 +161,14 @@ int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
 
 void thread_donate (struct thread *, struct lock *);
-void thread_release (struct thread *, struct lock *);
+void thread_release (struct lock *);
 
 bool priority_less (const struct list_elem *a_, 
-                           const struct list_elem *b_,
-                           void *aux);
+                    const struct list_elem *b_,
+                    void *aux);
+
+bool donation_less (const struct list_elem *a_, 
+                    const struct list_elem *b_,
+                    void *aux);
 
 #endif /* threads/thread.h */

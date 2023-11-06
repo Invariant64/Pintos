@@ -89,7 +89,7 @@ timer_elapsed (int64_t then)
 void
 timer_sleep (int64_t ticks) 
 {
-  /* If ticks <= 0, the thread doesn'n need to sleep */
+  /* If ticks <= 0, the thread doesn't need to sleep */
   if (ticks <= 0) 
     return;
 
