@@ -101,6 +101,8 @@ struct thread
     int previous_priority;               /* Previous priority. */
     struct list donations;               /* Donations. */
 
+    struct lock *acquired_lock;          /* Lock acquired by blocked thread. */
+
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
@@ -160,7 +162,7 @@ void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
 
-void thread_donate (struct thread *, struct lock *);
+void thread_donate (struct thread *, struct thread *, struct lock *);
 void thread_release (struct lock *);
 
 bool priority_less (const struct list_elem *a_, 

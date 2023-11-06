@@ -360,7 +360,7 @@ void
 thread_set_priority (int new_priority) 
 { 
   struct thread *t = thread_current ();
-  
+
   /* If current priority is donated by other threads,
      then thread_set_priority can not change current
      priority until every donation is done. */
@@ -449,7 +449,7 @@ idle (void *idle_started_ UNUSED)
 
          See [IA32-v2a] "HLT", [IA32-v2b] "STI", and [IA32-v3a]
          7.11.1 "HLT Instruction". */
-      asm volatile ("sti; hlt" : : : "memory");
+      asm volatile ("sti\; hlt" : : : "memory");
     }
 }
 
@@ -502,6 +502,7 @@ init_thread (struct thread *t, const char *name, int priority)
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
   t->previous_priority = PRI_INVALID;
+  t->acquired_lock = NULL;
   list_init (&t->donations);
   t->magic = THREAD_MAGIC;
   t->wakeup_ticks = 0;
@@ -628,13 +629,13 @@ allocate_tid (void)
    Used by switch.S, which can't figure it out on its own. */
 uint32_t thread_stack_ofs = offsetof (struct thread, stack);
 
-/* Current thread donates its priority to thread T. Thread T 
-   saves its old priority and the lock. */
+/* Thread DONATER donates its priority to thread T. This function
+   will create a donation if donation including L doesn't exist. */
 void 
-thread_donate (struct thread *t, struct lock *l)
+thread_donate (struct thread *donater, struct thread *t, struct lock *l)
 { 
-  int p = thread_get_priority ();
-  ASSERT (is_thread (t));
+  int p = donater->priority;
+  ASSERT (is_thread (donater) && is_thread (t));
   ASSERT (t->priority < p);
   struct list_elem *e;
   for (e = list_begin (&t->donations); 
@@ -671,6 +672,10 @@ thread_donate (struct thread *t, struct lock *l)
         }
       list_insert (e, &t->elem);
     }
+
+    if (l->holder->acquired_lock != NULL)
+      thread_donate (l->holder, l->holder->acquired_lock->holder, 
+                     l->holder->acquired_lock);
 }
 
 /* Checks if current priority is donated.
