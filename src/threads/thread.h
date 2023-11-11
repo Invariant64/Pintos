@@ -96,7 +96,7 @@ struct thread
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
 
-    int64_t wakeup_ticks;                /* Left ticks until wakeup. */
+    int64_t wakeup_ticks;                /* Ticks until thread wakes up. */
 
     int previous_priority;               /* Previous priority. */
     struct list donations;               /* Donations. */
@@ -129,12 +129,13 @@ struct donation
 extern bool thread_mlfqs;
 
 extern struct list ready_list;
+extern struct list sleep_list;
 
 void thread_init (void);
 void thread_start (void);
 
 void thread_tick (void);
-void thread_wakeup (struct thread *t, void *aux);
+void thread_wakeup (void);
 void thread_print_stats (void);
 
 typedef void thread_func (void *aux);
@@ -172,5 +173,9 @@ bool priority_less (const struct list_elem *a_,
 bool donation_less (const struct list_elem *a_, 
                     const struct list_elem *b_,
                     void *aux);
+
+bool wakeuptime_less (const struct list_elem *a_, 
+                      const struct list_elem *b_,
+                      void *aux);
 
 #endif /* threads/thread.h */

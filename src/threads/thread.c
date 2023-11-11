@@ -29,6 +29,11 @@ struct list ready_list;
    when they are first scheduled and removed when they exit. */
 static struct list all_list;
 
+/* List of sleeping processes. Processes are added to this list
+   when they are sleeped and removed when they need to wakeup.
+   Processes in the list are sorted by wakeup_ticks. */
+struct list sleep_list;
+
 /* Idle thread. */
 static struct thread *idle_thread;
 
@@ -99,6 +104,7 @@ thread_init (void)
   lock_init (&tid_lock);
   list_init (&ready_list);
   list_init (&all_list);
+  list_init (&sleep_list);
 
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
@@ -146,16 +152,26 @@ thread_tick (void)
     intr_yield_on_return ();
 }
 
-/* Wake up thread that left_ticks == 0 */
+/* Wake up threads in sleep_list that t->wakeup_ticks >= timer_ticks (). */
 void
-thread_wakeup (struct thread *t, void *aux UNUSED) 
-{
-  if (t->status == THREAD_BLOCKED && t->wakeup_ticks > 0)
+thread_wakeup (void) 
+{ 
+  if (list_empty (&sleep_list))
+    return;
+
+  struct list_elem *e = list_begin (&sleep_list);
+  while (e != list_end (&sleep_list))
     {
+      struct thread *t = list_entry (e, struct thread, elem);
       if (t->wakeup_ticks <= timer_ticks ())
-        {
+        { 
           t->wakeup_ticks = 0;
+          e = list_remove (e);
           thread_unblock (t);
+        }
+      else
+        {
+          break;
         }
     }
 }
@@ -736,4 +752,19 @@ donation_less (const struct list_elem *a_, const struct list_elem *b_,
   const struct donation *b = list_entry (b_, struct donation, elem);
   
   return a->priority <= b->priority;
+}
+
+/* Returns true if A's wakeup_ticks is less than B's wakeup_ticks, false
+   otherwise. A and B are both threads. */
+bool
+wakeuptime_less (const struct list_elem *a_, const struct list_elem *b_,
+                 void *aux UNUSED) 
+{
+  const struct thread *a = list_entry (a_, struct thread, elem);
+  const struct thread *b = list_entry (b_, struct thread, elem);
+  
+  /* When there is two same wakeup_ticks threads, the thread entered 
+     the list after need to insert after the other one, so that the 
+     first thread entered the list can wake first. */
+  return a->wakeup_ticks < b->wakeup_ticks;
 }
