@@ -152,7 +152,7 @@ thread_tick (void)
     intr_yield_on_return ();
 }
 
-/* Wake up threads in sleep_list that t->wakeup_ticks >= timer_ticks (). */
+/* Wake up threads in sleep_list that t->wakeup_ticks <= timer_ticks (). */
 void
 thread_wakeup (void) 
 { 
@@ -388,7 +388,7 @@ thread_set_priority (int new_priority)
   if (!list_empty (&ready_list))
     {
       if (new_priority < list_entry (list_back (&ready_list),
-                                    struct thread, elem))
+                                     struct thread, elem))
         thread_yield ();
     }
 }
@@ -657,6 +657,10 @@ thread_donate (struct thread *donater, struct thread *t,
   int p = donater->priority;
   ASSERT (is_thread (donater) && is_thread (t));
   ASSERT (t->priority < p);
+
+  /* Finds if there was a donation's lock is same to L. 
+     If exists, change the donation's priority if necessary. 
+     If doesn't, create a new donation. */
   struct list_elem *e;
   for (e = list_begin (&t->donations); 
        e != list_end (&t->donations); e = list_next (e))
@@ -680,6 +684,8 @@ thread_donate (struct thread *donater, struct thread *t,
   t->priority = list_entry (list_back (&t->donations), 
                             struct donation, elem)->priority;
   
+  /* Adjust the position of the thread in its list, sorting by 
+     priority. */
   e = t->elem.next;
   if (e != NULL)
     {
@@ -693,9 +699,11 @@ thread_donate (struct thread *donater, struct thread *t,
       list_insert (e, &t->elem);
     }
 
-    if (l->holder->acquired_lock != NULL)
-      thread_donate (l->holder, l->holder->acquired_lock->holder, 
-                     l->holder->acquired_lock, depth + 1);
+  /* If donated thread is locked by a lock, then try to donate priority
+     to the lock's holder. Chained proirity donations are implemented 
+     by recursion. The recursion has a depth limit. */
+  if (t->acquired_lock != NULL && t->priority > t->acquired_lock->holder->priority)
+    thread_donate (t, t->acquired_lock->holder, t->acquired_lock, depth + 1);
 }
 
 /* Checks if current priority is donated.
