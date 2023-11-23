@@ -485,6 +485,26 @@ list_unique (struct list *list, struct list *duplicates,
       elem = next;
 }
 
+/* When an elem in a sorted list change its value, use
+   list_adjust_sorted to adjust its position to make 
+   the list sorted. */
+void list_adjust_sorted (struct list_elem *elem, list_less_func *less,
+                         void *aux)
+{
+  struct list_elem *e = list_next (elem);
+  if (e != NULL)
+    {
+      list_remove (elem);
+      while (e->next != NULL)
+        { 
+          if (less (elem, e, aux))
+            break;
+          e = list_next (e);
+        }
+      list_insert (e, elem);
+    }
+}
+
 /* Returns the element in LIST with the largest value according
    to LESS given auxiliary data AUX.  If there is more than one
    maximum, returns the one that appears earlier in the list.  If

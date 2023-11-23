@@ -659,8 +659,9 @@ thread_donate (struct thread *donater, struct thread *t,
   ASSERT (t->priority < p);
 
   /* Finds if there was a donation's lock is same to L. 
-     If exists, change the donation's priority if necessary. 
-     If doesn't, create a new donation. */
+     If exists, change the donation's priority if necessary
+     and change its position in list. If doesn't, create a 
+     new donation and insert. */
   struct list_elem *e;
   for (e = list_begin (&t->donations); 
        e != list_end (&t->donations); e = list_next (e))
@@ -668,7 +669,11 @@ thread_donate (struct thread *donater, struct thread *t,
       struct donation *d = list_entry (e, struct donation, elem);
       if (d->lock == l)
         {
-          d->priority = (p > d->priority) ? p : d->priority;
+          if (d->priority < p)
+            {
+              d->priority = p;
+              list_adjust_sorted (&d->elem, donation_less, NULL);
+            }
           break;
         }
     }
@@ -686,18 +691,7 @@ thread_donate (struct thread *donater, struct thread *t,
   
   /* Adjust the position of the thread in its list, sorting by 
      priority. */
-  e = t->elem.next;
-  if (e != NULL)
-    {
-      list_remove (&t->elem);
-      while (e->next != NULL)
-        { 
-          if (priority_less (&t->elem, e, NULL))
-            break;
-          e = list_next (e);
-        }
-      list_insert (e, &t->elem);
-    }
+  list_adjust_sorted (&t->elem, priority_less, NULL);
 
   /* If donated thread is locked by a lock, then try to donate priority
      to the lock's holder. Chained proirity donations are implemented 
