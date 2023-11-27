@@ -163,7 +163,7 @@ void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
 
-void thread_donate (struct thread *, struct thread *, struct lock *, int);
+void thread_donate (struct thread *, struct thread *, struct lock *);
 void thread_release (struct lock *);
 
 bool priority_less (const struct list_elem *a_, 

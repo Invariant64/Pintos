@@ -649,55 +649,65 @@ uint32_t thread_stack_ofs = offsetof (struct thread, stack);
    will create a donation if donation including L doesn't exist. */
 void 
 thread_donate (struct thread *donater, struct thread *t, 
-               struct lock *l, int depth)
+               struct lock *l)
 { 
-  /* Limits the depth of chain donation. */
-  ASSERT (depth <= DONATION_MAX_DEPTH);
-
-  int p = donater->priority;
-  ASSERT (is_thread (donater) && is_thread (t));
-  ASSERT (t->priority < p);
-
-  /* Finds if there was a donation's lock is same to L. 
-     If exists, change the donation's priority if necessary
-     and change its position in list. If doesn't, create a 
-     new donation and insert. */
-  struct list_elem *e;
-  for (e = list_begin (&t->donations); 
-       e != list_end (&t->donations); e = list_next (e))
+  for (int depth = 1; ; depth++)
     {
-      struct donation *d = list_entry (e, struct donation, elem);
-      if (d->lock == l)
+      /* Limits the depth of chain donation. */
+      ASSERT (depth <= DONATION_MAX_DEPTH);
+
+      int p = donater->priority;
+      ASSERT (is_thread (donater) && is_thread (t));
+      ASSERT (t->priority < p);
+
+      /* Finds if there was a donation's lock is same to L. 
+        If exists, change the donation's priority if necessary
+        and change its position in list. If doesn't, create a 
+        new donation and insert. */
+      struct list_elem *e;
+      for (e = list_begin (&t->donations); 
+          e != list_end (&t->donations); e = list_next (e))
         {
-          if (d->priority < p)
+          struct donation *d = list_entry (e, struct donation, elem);
+          if (d->lock == l)
             {
-              d->priority = p;
-              list_adjust_sorted (&d->elem, donation_less, NULL);
+              if (d->priority < p)
+                {
+                  d->priority = p;
+                  list_adjust_sorted (&d->elem, donation_less, NULL);
+                }
+              break;
             }
+        }
+      if (e == list_end (&t->donations))
+        {
+          struct donation *new_donation = malloc (sizeof *new_donation);
+          new_donation->lock = l;
+          new_donation->priority = p;
+          list_insert_ordered (&t->donations, &new_donation->elem, donation_less, NULL);
+        }
+      if (t->previous_priority == PRI_INVALID)
+        t->previous_priority = t->priority;
+      t->priority = list_entry (list_back (&t->donations), 
+                                struct donation, elem)->priority;
+      
+      /* Adjust the position of the thread in its list, sorting by 
+        priority. */
+      list_adjust_sorted (&t->elem, priority_less, NULL);
+
+      /* If donated thread is locked by a lock, then try to donate priority
+        to the lock's holder. The chain donations has a depth limit. */
+      if (t->acquired_lock != NULL && t->priority > t->acquired_lock->holder->priority)
+        {
+          donater = t;
+          l = t->acquired_lock;
+          t = l->holder;
+        }
+      else
+        {
           break;
         }
     }
-  if (e == list_end (&t->donations))
-    {
-      struct donation *new_donation = malloc (sizeof *new_donation);
-      new_donation->lock = l;
-      new_donation->priority = p;
-      list_insert_ordered (&t->donations, &new_donation->elem, donation_less, NULL);
-    }
-  if (t->previous_priority == PRI_INVALID)
-    t->previous_priority = t->priority;
-  t->priority = list_entry (list_back (&t->donations), 
-                            struct donation, elem)->priority;
-  
-  /* Adjust the position of the thread in its list, sorting by 
-     priority. */
-  list_adjust_sorted (&t->elem, priority_less, NULL);
-
-  /* If donated thread is locked by a lock, then try to donate priority
-     to the lock's holder. Chained proirity donations are implemented 
-     by recursion. The recursion has a depth limit. */
-  if (t->acquired_lock != NULL && t->priority > t->acquired_lock->holder->priority)
-    thread_donate (t, t->acquired_lock->holder, t->acquired_lock, depth + 1);
 }
 
 /* Checks if current priority is donated.
