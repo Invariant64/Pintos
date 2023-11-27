@@ -1,3 +1,6 @@
+#ifndef THREADS_FIXED_POINT_H
+#define THREADS_FIXED_POINT_H
+
 /* Fixed point calculations. */
 
 typedef int fixed_point;
@@ -9,67 +12,23 @@ typedef int fixed_point;
 
 #define FP_F (1 << FP_Q) 
 
-/* Convert integer to fixed point. */
-fixed_point int_to_fp (int n)
-{
-  return n * FP_F;
-}
-
-/* Convert fixed point ti integer (rounding toward zero). */
-fixed_point fp_to_int_0 (fixed_point x) 
-{
-  return x / FP_F;
-}
-
-/* Convert fixed point ti integer (rounding toward nearest). */
-fixed_point fp_to_int_n (fixed_point x)
-{ 
-  if (x > 0)
-    return (x + FP_F / 2) / FP_F;
-  else
-    return (x - FP_F / 2) / FP_F;
-}
+/* Convertions between fixed point and integer. */
+fixed_point int_to_fp (int);
+int fp_to_int_0 (fixed_point);
+int fp_to_int_n (fixed_point);
 
 /* Caculations between a fixed point and a fixed point, 
    return a fixed point. */
-fixed_point fp_add_fp (fixed_point x, fixed_point y)
-{
-  return x + y;
-}
-
-fixed_point fp_sub_fp (fixed_point x, fixed_point y)
-{
-  return x - y;
-}
-
-fixed_point fp_mul_fp (fixed_point x, fixed_point y)
-{
-  return (int64_t) x * y / FP_F;
-}
-
-fixed_point fp_div_fp (fixed_point x, fixed_point y)
-{
-  return (int64_t) x * FP_F / y;
-}
+fixed_point fp_add_fp (fixed_point, fixed_point);
+fixed_point fp_sub_fp (fixed_point, fixed_point);
+fixed_point fp_mul_fp (fixed_point, fixed_point);
+fixed_point fp_div_fp (fixed_point, fixed_point);
 
 /* Caculations between a fixed point and an integer, 
    return a fixed point. */
-fixed_point fp_add_int (fixed_point x, int n)
-{
-  return x + n / FP_F;
-}
+fixed_point fp_add_int (fixed_point, int);
+fixed_point fp_sub_int (fixed_point, int);
+fixed_point fp_mul_int (fixed_point, int);
+fixed_point fp_div_int (fixed_point, int);
 
-fixed_point fp_sub_int (fixed_point x, int n)
-{
-  return x - n / FP_F;
-}
-
-fixed_point fp_mul_int (fixed_point x, int n)
-{
-  return x * n;
-}
-
-fixed_point fp_div_int (fixed_point x, int n)
-{
-  return x / n;
-}
+#endif /* threads/fixed-point.h */
