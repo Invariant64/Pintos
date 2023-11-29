@@ -180,6 +180,16 @@ timer_interrupt (struct intr_frame *args UNUSED)
   ticks++;
   thread_tick ();
   thread_wakeup ();
+  if (thread_mlfqs)
+    {
+      struct thread *t = thread_current ();
+      t->recent_cpu = fp_add_int (t->recent_cpu, 1);
+      thread_update_priority (t, NULL);
+      if(ticks % TIMER_FREQ == 0)
+          thread_update_all ();
+          
+      intr_yield_on_return ();
+    }
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer

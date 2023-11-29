@@ -45,12 +45,12 @@ fixed_point fp_div_fp (fixed_point x, fixed_point y)
 
 fixed_point fp_add_int (fixed_point x, int n)
 {
-  return x + n / FP_F;
+  return x + n * FP_F;
 }
 
 fixed_point fp_sub_int (fixed_point x, int n)
 {
-  return x - n / FP_F;
+  return x - n * FP_F;
 }
 
 fixed_point fp_mul_int (fixed_point x, int n)
@@ -61,4 +61,24 @@ fixed_point fp_mul_int (fixed_point x, int n)
 fixed_point fp_div_int (fixed_point x, int n)
 {
   return x / n;
+}
+
+fixed_point int_add_int (int n, int m)
+{
+  return n * FP_F + m * FP_F;
+}
+
+fixed_point int_sub_int (int n, int m)
+{
+  return n * FP_F - m * FP_F;
+}
+
+fixed_point int_mul_int (int n, int m)
+{
+  return (int64_t) FP_F * n * m;
+}
+
+fixed_point int_div_int (int n, int m)
+{
+  return (int64_t) FP_F * n / m;
 }

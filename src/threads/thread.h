@@ -4,6 +4,7 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
+#include "threads/fixed-point.h"
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -103,6 +104,10 @@ struct thread
 
     struct lock *acquired_lock;          /* Lock acquired by blocked thread. */
 
+    /* Mlfqs. */
+    int nice;
+    fixed_point recent_cpu;
+
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
@@ -128,8 +133,12 @@ struct donation
    Controlled by kernel command-line option "-o mlfqs". */
 extern bool thread_mlfqs;
 
+extern fixed_point load_avg;
+
 extern struct list ready_list;
 extern struct list sleep_list;
+
+extern struct list ready_queue[PRI_MAX + 1];
 
 void thread_init (void);
 void thread_start (void);
@@ -162,6 +171,16 @@ int thread_get_nice (void);
 void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
+
+void thread_update_priority (struct thread *, void *aux);
+void thread_update_recent_cpu (struct thread *, void *aux);
+void thread_update_load_avg (void);
+void thread_update_all (void);
+
+void thread_insert_ready_queue (struct thread *);
+void thread_adjust_queues (void);
+
+int get_max_nempty_queue (void);
 
 void thread_donate (struct thread *, struct thread *, struct lock *);
 void thread_release (struct lock *);

@@ -125,9 +125,16 @@ sema_up (struct semaphore *sema)
   sema->value++;
   intr_set_level (old_level);
 
-  if (!list_empty (&ready_list) && 
-      t != NULL && t->priority > thread_get_priority ()) 
-    thread_yield ();
+  if (!thread_mlfqs)
+    {
+      if (!list_empty (&ready_list) && t != NULL && t->priority > thread_get_priority ()) 
+        thread_yield ();
+    }
+  else
+    {
+      if (get_max_nempty_queue () >= 0 && t != NULL && t->priority > thread_get_priority ())
+        thread_yield ();
+    }
 }
 
 static void sema_test_helper (void *sema_);
@@ -207,13 +214,21 @@ lock_acquire (struct lock *lock)
   ASSERT (!lock_held_by_current_thread (lock));
 
   struct thread *current = thread_current ();
-  struct thread *holder = lock->holder;
-  if (holder != NULL && current->priority > holder->priority)
-    thread_donate (thread_current (), holder, lock);
-  current->acquired_lock = lock;
-  sema_down (&lock->semaphore);
-  current->acquired_lock = NULL;
-  lock->holder = current;
+  if (!thread_mlfqs)
+    {
+      struct thread *holder = lock->holder;
+      if (holder != NULL && current->priority > holder->priority)
+        thread_donate (current, holder, lock);
+      current->acquired_lock = lock;
+      sema_down (&lock->semaphore);
+      current->acquired_lock = NULL;
+      lock->holder = current;
+    }
+  else
+    {
+      sema_down (&lock->semaphore);
+      lock->holder = current;
+    }
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
@@ -247,8 +262,8 @@ lock_release (struct lock *lock)
   ASSERT (lock != NULL);
   ASSERT (lock_held_by_current_thread (lock));
 
-  thread_release (lock);
-  struct thread *holder = lock->holder;
+  if (!thread_mlfqs)
+    thread_release (lock);
   lock->holder = NULL;
   sema_up (&lock->semaphore);
 }

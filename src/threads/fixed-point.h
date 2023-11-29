@@ -31,4 +31,11 @@ fixed_point fp_sub_int (fixed_point, int);
 fixed_point fp_mul_int (fixed_point, int);
 fixed_point fp_div_int (fixed_point, int);
 
+/* Caculations between a integer and an integer, 
+   return a fixed point. */
+fixed_point int_add_int (int, int);
+fixed_point int_sub_int (int, int);
+fixed_point int_mul_int (int, int);
+fixed_point int_div_int (int, int);
+
 #endif /* threads/fixed-point.h */
