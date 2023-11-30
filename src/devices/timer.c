@@ -184,11 +184,10 @@ timer_interrupt (struct intr_frame *args UNUSED)
     {
       struct thread *t = thread_current ();
       t->recent_cpu = fp_add_int (t->recent_cpu, 1);
-      thread_update_priority (t, NULL);
       if(ticks % TIMER_FREQ == 0)
-          thread_update_all ();
-          
-      intr_yield_on_return ();
+        thread_update_all ();
+      else if (ticks % 4 == 0)
+        thread_foreach (thread_update_priority, NULL);
     }
 }
 
