@@ -128,7 +128,7 @@ sema_up (struct semaphore *sema)
   if (!thread_mlfqs)
     {
       if (!list_empty (&ready_list) && t != NULL && t->priority > thread_get_priority ()) 
-        thread_yield ();
+        thread_try_yield ();
     }
   else
     {

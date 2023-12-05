@@ -356,8 +356,9 @@ thread_exit (void)
    may be scheduled again immediately at the scheduler's whim. */
 void
 thread_yield (void) 
-{
+{ 
   struct thread *cur = thread_current ();
+
   enum intr_level old_level;
   
   ASSERT (!intr_context ());
@@ -368,6 +369,16 @@ thread_yield (void)
   cur->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);
+}
+
+/* Only sema_up() will use this function, to prevent yield when
+   tasks are not ready to run. */
+void
+thread_try_yield (void)
+{
+  if (thread_current () == idle_thread)
+    return;
+  thread_yield ();
 }
 
 /* Invoke function 'func' on all threads, passing along 'aux'.
