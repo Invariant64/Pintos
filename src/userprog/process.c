@@ -21,6 +21,8 @@
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
 
+static void push_args (void **esp, char *cmd, char *args);
+
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
    before process_execute() returns.  Returns the new process's
@@ -28,20 +30,28 @@ static bool load (const char *cmdline, void (**eip) (void), void **esp);
 tid_t
 process_execute (const char *file_name) 
 {
-  char *fn_copy;
+  char *fn_copy0, *fn_copy1;
+  char *cmd, *save_ptr;
   tid_t tid;
 
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
-  fn_copy = palloc_get_page (0);
-  if (fn_copy == NULL)
+  fn_copy0 = palloc_get_page (0);
+  if (fn_copy0 == NULL)
     return TID_ERROR;
-  strlcpy (fn_copy, file_name, PGSIZE);
+  strlcpy (fn_copy0, file_name, PGSIZE);
+
+  fn_copy1 = palloc_get_page (0);
+  if (fn_copy1 == NULL)
+    return TID_ERROR;
+  strlcpy (fn_copy1, file_name, PGSIZE);
+  cmd = strtok_r (fn_copy1, " ", &save_ptr);
 
   /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
+  tid = thread_create (cmd, PRI_DEFAULT, start_process, fn_copy0);
   if (tid == TID_ERROR)
-    palloc_free_page (fn_copy); 
+    palloc_free_page (fn_copy0); 
+  palloc_free_page (fn_copy1);
   return tid;
 }
 
@@ -50,20 +60,26 @@ process_execute (const char *file_name)
 static void
 start_process (void *file_name_)
 {
-  char *file_name = file_name_;
+  char *cmd, *save_ptr;
   struct intr_frame if_;
   bool success;
+
+  cmd = strtok_r (file_name_, " ", &save_ptr);
 
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
-  success = load (file_name, &if_.eip, &if_.esp);
+  success = load (cmd, &if_.eip, &if_.esp);
 
   /* If load failed, quit. */
-  palloc_free_page (file_name);
-  if (!success) 
+  if (success) 
+    {
+      push_args (&if_.esp, cmd, save_ptr);
+      palloc_free_page (file_name_);
+    }
+  else
     thread_exit ();
 
   /* Start the user process by simulating a return from an
@@ -88,6 +104,7 @@ start_process (void *file_name_)
 int
 process_wait (tid_t child_tid UNUSED) 
 {
+  while (1) ;
   return -1;
 }
 
@@ -97,6 +114,8 @@ process_exit (void)
 {
   struct thread *cur = thread_current ();
   uint32_t *pd;
+
+  printf ("%s: exit(%d)\n", cur->name, cur->exit_status);
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
@@ -131,7 +150,50 @@ process_activate (void)
      interrupts. */
   tss_update ();
 }
-
+
+static void push_args (void **esp, char *cmd, char *args_)
+{
+  int argc = 0;
+  char *arg_ptr[1024];
+  char *args[1024];
+  char *arg, *save_arg;
+  char **argv;
+  size_t size, total_size = 0;
+
+  /* Push arguments. */
+  for (arg = cmd; arg != NULL; arg = strtok_r (NULL, " ", &args_))
+    args[argc++] = arg;
+  
+  for (int i = argc - 1; i >= 0; i--)
+    {
+      size = (strlen (arg) + 1) * sizeof (char);
+      total_size += size;
+      *esp -= size;
+      memcpy (*esp, args[i], size);
+      arg_ptr[i] = *esp;
+    }
+
+  *esp -= 4 - (total_size % 4);
+  
+  /* Push arguments' pointers. */
+  size = argc * sizeof (char*);
+  *esp -= size;
+  memcpy (*esp, arg_ptr, size);
+  argv = *esp;
+
+  size = sizeof (char**);
+  *esp -= size;
+  memcpy (*esp, argv, size);
+
+  size = sizeof (int);
+  *esp -= size;
+  memcpy (*esp, argc, size);
+
+  size = sizeof (void*);
+  *esp -= size;
+  memcpy (*esp, (void*) 0, size);
+}
+
 /* We load ELF binaries.  The following definitions are taken
    from the ELF specification, [ELF1], more-or-less verbatim.  */
 
@@ -437,7 +499,7 @@ setup_stack (void **esp)
     {
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
       if (success)
-        *esp = PHYS_BASE;
+        *esp = PHYS_BASE - 12;
       else
         palloc_free_page (kpage);
     }
