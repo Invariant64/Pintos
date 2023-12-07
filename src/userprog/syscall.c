@@ -33,6 +33,7 @@ syscall_handler (struct intr_frame *f UNUSED)
         break;
       case SYS_WRITE:
         ret = sys_write (*(addr + 1), *(addr + 2), *(addr + 3));
+        break;
       default:
         sys_exit (-1);
     }

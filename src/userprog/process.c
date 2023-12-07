@@ -18,10 +18,21 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 
+union esp_t
+{
+  void *vp;
+  char *cp;
+  char **cpp;
+  char ***cppp;
+  unsigned u;
+  int *ip;
+  void (**rap) ();
+};
+
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
 
-static void push_args (void **esp, char *cmd, char *args);
+static void* push_args (union esp_t esp , char *cmd, char *args);
 
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
@@ -76,7 +87,7 @@ start_process (void *file_name_)
   /* If load failed, quit. */
   if (success) 
     {
-      push_args (&if_.esp, cmd, save_ptr);
+      if_.esp = push_args ((union esp_t) if_.esp, cmd, save_ptr);
       palloc_free_page (file_name_);
     }
   else
@@ -151,47 +162,45 @@ process_activate (void)
   tss_update ();
 }
 
-static void push_args (void **esp, char *cmd, char *args_)
+void* push_args (union esp_t esp, char *cmd, char *args_)
 {
-  int argc = 0;
-  char *arg_ptr[1024];
+  /* Most 4kb arguments . */
   char *args[1024];
-  char *arg, *save_arg;
+  char *arg_ptr[1024];
   char **argv;
-  size_t size, total_size = 0;
+  int argc = 0;
 
-  /* Push arguments. */
-  for (arg = cmd; arg != NULL; arg = strtok_r (NULL, " ", &args_))
+  for (char *arg = cmd; arg != NULL; arg = strtok_r (NULL, " ", &args_))
     args[argc++] = arg;
   
   for (int i = argc - 1; i >= 0; i--)
     {
-      size = (strlen (arg) + 1) * sizeof (char);
-      total_size += size;
-      *esp -= size;
-      memcpy (*esp, args[i], size);
-      arg_ptr[i] = *esp;
+      int size = strlen (args[i]) + 1;
+      esp.cp -= size;
+      strlcpy (esp.cp, args[i], size);
+      arg_ptr[i] = esp.cp;
     }
 
-  *esp -= 4 - (total_size % 4);
+  esp.u -= esp.u % 4;
+
+  arg_ptr[argc] = 0;
+  for (int i = argc; i >= 0; i--)
+    {
+      esp.cpp--;
+      *esp.cpp = arg_ptr[i];
+    }
+  argv = esp.cpp;
   
-  /* Push arguments' pointers. */
-  size = argc * sizeof (char*);
-  *esp -= size;
-  memcpy (*esp, arg_ptr, size);
-  argv = *esp;
+  esp.cppp--;
+  *esp.cppp = argv;
 
-  size = sizeof (char**);
-  *esp -= size;
-  memcpy (*esp, argv, size);
+  esp.ip--;
+  *esp.ip = argc;
 
-  size = sizeof (int);
-  *esp -= size;
-  memcpy (*esp, argc, size);
+  esp.rap--;
+  *esp.rap = 0;
 
-  size = sizeof (void*);
-  *esp -= size;
-  memcpy (*esp, (void*) 0, size);
+  return esp.vp;
 }
 
 /* We load ELF binaries.  The following definitions are taken
