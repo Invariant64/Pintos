@@ -9,23 +9,23 @@
 
 typedef int pid_t;
 
-typedef int syscall_func (void *param1, void *param2, void *param3);
+typedef int syscall_func (void *, void *, void *);
 
 static void syscall_handler (struct intr_frame *);
 
 static void     sys_halt     (void);
 static void     sys_exit     (int);
-static pid_t    sys_exec     (const char *);
+static pid_t    sys_exec     (const char*);
 static int      sys_wait     (pid_t);
-static bool     sys_create   (const char *file, unsigned initial_size);
-static bool     sys_remove   (const char *file);
-static int      sys_open     (const char *file);
-static int      sys_filesize (int fd);
-static int      sys_read     (int fd, void *buffer, unsigned size);
-static int      sys_write    (int, const void*, unsigned);
-static void     sys_seek     (int fd, unsigned position);
-static unsigned sys_tell     (int fd);
-static void     sys_close    (int fd);
+static bool     sys_create   (const char *, unsigned);
+static bool     sys_remove   (const char *);
+static int      sys_open     (const char *);
+static int      sys_filesize (int);
+static int      sys_read     (int, void *, unsigned);
+static int      sys_write    (int, const void *, unsigned);
+static void     sys_seek     (int, unsigned);
+static unsigned sys_tell     (int);
+static void     sys_close    (int);
 
 syscall_func *sys_func[SYS_CALL_NUM];
 
