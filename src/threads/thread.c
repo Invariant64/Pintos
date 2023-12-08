@@ -58,6 +58,7 @@ static unsigned thread_ticks; /* # of timer ticks since last yield. */
    If true, use multi-level feedback queue scheduler.
    Controlled by kernel command-line option "-o mlfqs". */
 bool thread_mlfqs;
+bool schedule_started = false;
 
 static void kernel_thread(thread_func *, void *aux);
 
@@ -107,6 +108,7 @@ void thread_start(void)
   struct semaphore idle_started;
   sema_init(&idle_started, 0);
   thread_create("idle", PRI_MIN, idle, &idle_started);
+  schedule_started = true;
 
   /* Start preemptive thread scheduling. */
   intr_enable();
@@ -217,11 +219,14 @@ bool compare_priority(const struct list_elem *a,const struct list_elem *b,void *
    primitives in synch.h. */
 void thread_block(void)
 {
-  ASSERT(!intr_context());
-  ASSERT(intr_get_level() == INTR_OFF);
+  if(schedule_started)
+  {
+    ASSERT(!intr_context());
+    ASSERT(intr_get_level() == INTR_OFF);
 
-  thread_current()->status = THREAD_BLOCKED;
-  schedule();
+    thread_current()->status = THREAD_BLOCKED;
+    schedule();
+  }
 }
 /* This function must be called with interrupts off 
   It is designed for checking blocked thread's ticksOfblock
@@ -336,17 +341,20 @@ void thread_exit(void)
    may be scheduled again immediately at the scheduler's whim. */
 void thread_yield(void)
 {
-  struct thread *cur = thread_current();
-  enum intr_level old_level;
+  if(schedule_started)
+  {
+    struct thread *cur = thread_current();
+    enum intr_level old_level;
 
-  ASSERT(!intr_context());
-  old_level = intr_disable();
-  if (cur != idle_thread)
-    //list_push_back(&ready_list, &cur->elem);
-    list_insert_ordered(&ready_list, &cur->elem, &compare_priority, NULL);
-  cur->status = THREAD_READY;
-  schedule();
-  intr_set_level(old_level);
+    ASSERT(!intr_context());
+    old_level = intr_disable();
+    if (cur != idle_thread)
+      //list_push_back(&ready_list, &cur->elem);
+      list_insert_ordered(&ready_list, &cur->elem, &compare_priority, NULL);
+    cur->status = THREAD_READY;
+    schedule();
+    intr_set_level(old_level);
+  }
 }
 
 /* Invoke function 'func' on all threads, passing along 'aux'.
