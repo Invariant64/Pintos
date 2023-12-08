@@ -75,7 +75,7 @@ void sys_halt (void)
 
 void sys_exit (int status)
 { 
-  thread_current ()->exit_status = status;
+  thread_current ()->process->exit_status = status;
   thread_exit ();
 }
 

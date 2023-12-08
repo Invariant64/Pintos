@@ -115,7 +115,18 @@ start_process (void *file_name_)
 int
 process_wait (tid_t child_tid UNUSED) 
 {
-  while (1) ;
+  struct thread *cur = thread_current ();
+
+  for (struct list_elem *e = list_begin (&cur->children);
+       e != list_end (&cur->children); e = list_next (e))
+    { 
+      struct process *p = list_entry (e, struct process, elem);
+      if (p->process_thread->tid == child_tid)
+        {
+          sema_down (&p->sema);
+          return p->exit_status;
+        }
+    }
   return -1;
 }
 
@@ -126,12 +137,14 @@ process_exit (void)
   struct thread *cur = thread_current ();
   uint32_t *pd;
 
+  sema_up (&cur->process->sema);
+
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
   pd = cur->pagedir;
   if (pd != NULL) 
     {
-      printf ("%s: exit(%d)\n", cur->name, cur->exit_status);
+      printf ("%s: exit(%d)\n", cur->name, cur->process->exit_status);
       /* Correct ordering here is crucial.  We must set
          cur->pagedir to NULL before switching page directories,
          so that a timer interrupt can't switch back to the
@@ -507,7 +520,7 @@ setup_stack (void **esp)
     {
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
       if (success)
-        *esp = PHYS_BASE - 12;
+        *esp = PHYS_BASE;
       else
         palloc_free_page (kpage);
     }

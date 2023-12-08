@@ -4,6 +4,7 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
+#include "threads/synch.h"
 #include "threads/fixed-point.h"
 
 /* States in a thread's life cycle. */
@@ -27,6 +28,27 @@ typedef int tid_t;
 #define PRI_INVALID -1                  /* Invalied priority. */
 
 #define DONATION_MAX_DEPTH 8            /* Maximum depth of donation. */
+
+#ifdef USERPROG
+
+/* Struct process saves process' infomation, when creating a process,
+   malloc new space for process, because if there is process FA and its
+   child process A, A ended before FA ended, then A's space was released,
+   FA can't get A's termination information. So process need a dependent
+   space. 
+   
+   When creating a process thread, the process and its parent need to 
+   save the process pointer. Only when the last one of the process and
+   its parent ended, the process' space was released. */
+struct process
+{
+   struct thread *process_thread;      /* Thread that the process belongs to. */
+   bool terminated;                    /* Is the process terminated. */
+   struct semaphore sema;              /* Semaphore uses to wait for process ends. */
+   int exit_status;                    /* Process' exit status. */
+   struct list_elem elem;              /* List element. */
+};
+#endif
 
 /* A kernel thread or user process.
 
@@ -111,7 +133,10 @@ struct thread
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
-    int exit_status;                    /* Exit status. */
+   
+    struct process *parent_process;     /* Parent thread. */      
+    struct process *process;            /* Process pointer. */
+    struct list children;               /* Child processes. */
 #endif
 
     /* Owned by thread.c. */
