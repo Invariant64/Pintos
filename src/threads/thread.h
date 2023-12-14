@@ -47,6 +47,18 @@ struct process
    struct semaphore sema;              /* Semaphore uses to wait for process ends. */
    int exit_status;                    /* Process' exit status. */
    struct list_elem elem;              /* List element. */
+   int max_fd;
+   struct list files;
+   int pid;
+   bool waited;
+   bool success;
+};
+
+struct fd
+{
+   int fd;
+   struct file *file;
+   struct list_elem elem;
 };
 #endif
 
@@ -137,6 +149,11 @@ struct thread
     struct process *parent_process;     /* Parent thread. */      
     struct process *process;            /* Process pointer. */
     struct list children;               /* Child processes. */
+
+    struct semaphore sema;
+
+    struct thread *parent_thread;
+    bool success;
 #endif
 
     /* Owned by thread.c. */

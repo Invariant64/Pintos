@@ -253,11 +253,18 @@ thread_create (const char *name, int priority,
 
 #ifdef USERPROG
   /* Malloc new space for process. */
-  struct process *p = malloc (sizeof (struct process));
+  struct process *p = palloc_get_page (0);
+  if (p == NULL)
+    return TID_ERROR;
   struct thread *cur = thread_current ();
   p->process_thread = t;
   p->terminated = false;
   p->exit_status = 0;
+  p->max_fd = 2;
+  p->waited = false;
+  p->pid = tid;
+  p->success = false;
+  list_init (&p->files);
   sema_init (&p->sema, 0);
   t->parent_process = cur->process;
   t->process = p;
@@ -693,7 +700,13 @@ init_thread (struct thread *t, const char *name, int priority)
 
 #ifdef USERPROG
   t->process = NULL;
+  t->success = false;
   list_init (&t->children);
+  sema_init (&t->sema, 0);
+  if (t == initial_thread)
+    t->parent_thread = NULL;
+  else
+    t->parent_thread = thread_current();
 #endif
 
   old_level = intr_disable ();
@@ -782,26 +795,6 @@ thread_schedule_tail (struct thread *prev)
     {
       ASSERT (prev != cur);
       palloc_free_page (prev);
-
-#ifdef USERPROG
-      /* When the thread is dying, release the process' space and 
-         its child process' space if needed. */
-      struct list_elem *e = list_begin (&cur->children);
-      while (e != list_end (&cur->children))
-        {
-          struct process *p = list_entry (e, struct process, elem);
-          e = list_remove (e);
-          if (p->terminated)
-            free (p);
-        }
-      if (cur->process != NULL)
-        {
-          if (cur->parent_process->terminated)
-            free (cur->process);
-          else
-            cur->process->terminated = true;
-        }
-#endif
     }
 }
 

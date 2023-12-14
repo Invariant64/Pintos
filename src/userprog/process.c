@@ -34,6 +34,8 @@ static bool load (const char *cmdline, void (**eip) (void), void **esp);
 
 static void* push_args (union esp_t esp , char *cmd, char *args);
 
+static void close_all_files (struct process *process);
+
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
    before process_execute() returns.  Returns the new process's
@@ -60,9 +62,40 @@ process_execute (const char *file_name)
 
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create (cmd, PRI_DEFAULT, start_process, fn_copy0);
-  if (tid == TID_ERROR)
-    palloc_free_page (fn_copy0); 
   palloc_free_page (fn_copy1);
+  if (tid == TID_ERROR)
+    {
+      palloc_free_page (fn_copy0); 
+      return TID_ERROR;
+    }
+
+  struct thread *cur = thread_current ();
+  struct process *child = NULL;
+  for (struct list_elem *e = list_begin (&cur->children); 
+       e != list_end (&cur->children); e = list_next (e))
+    {
+      struct process *p = list_entry (e, struct process, elem);
+      if (p->pid == tid)
+        {
+          child = p;
+          break;
+        }
+    }
+  
+  if (child == NULL)
+    return TID_ERROR;
+
+  sema_down (&cur->sema);
+
+  if (!child->success)
+    {
+      if (child->process_thread->parent_thread != NULL)
+        list_remove (&child->elem);  
+      close_all_files (child);
+      palloc_free_page (child);
+      return TID_ERROR;
+    }
+
   return tid;
 }
 
@@ -84,14 +117,21 @@ start_process (void *file_name_)
   if_.eflags = FLAG_IF | FLAG_MBS;
   success = load (cmd, &if_.eip, &if_.esp);
 
-  /* If load failed, quit. */
+  struct thread *cur = thread_current ();
+  cur->process->success = success;
   if (success) 
     {
       if_.esp = push_args ((union esp_t) if_.esp, cmd, save_ptr);
       palloc_free_page (file_name_);
     }
-  else
-    thread_exit ();
+
+  sema_up (&cur->parent_thread->sema);
+
+  if (!success)
+    {
+      cur->process->exit_status = -1;
+      thread_exit ();
+    }
 
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
@@ -113,21 +153,33 @@ start_process (void *file_name_)
    This function will be implemented in problem 2-2.  For now, it
    does nothing. */
 int
-process_wait (tid_t child_tid UNUSED) 
+process_wait (tid_t child_tid) 
 {
+  if (child_tid == TID_ERROR)
+    return TID_ERROR;
+
   struct thread *cur = thread_current ();
 
   for (struct list_elem *e = list_begin (&cur->children);
        e != list_end (&cur->children); e = list_next (e))
     { 
       struct process *p = list_entry (e, struct process, elem);
-      if (p->process_thread->tid == child_tid)
+      if (p->pid == child_tid)
         {
+          if (p->waited || !p->success)
+            return TID_ERROR;
+          p->waited = true;
           sema_down (&p->sema);
-          return p->exit_status;
+          int exit_status = p->exit_status;
+          if (p->process_thread->parent_thread != NULL)
+            list_remove (&p->elem);  
+          close_all_files (p);
+          palloc_free_page (p);
+
+          return exit_status;
         }
     }
-  return -1;
+  return TID_ERROR;
 }
 
 /* Free the current process's resources. */
@@ -136,8 +188,6 @@ process_exit (void)
 {
   struct thread *cur = thread_current ();
   uint32_t *pd;
-
-  sema_up (&cur->process->sema);
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
@@ -154,7 +204,9 @@ process_exit (void)
          that's been freed (and cleared). */
       cur->pagedir = NULL;
       pagedir_activate (NULL);
-      pagedir_destroy (pd);
+      // pagedir_destroy (pd);
+
+      sema_up (&cur->process->sema);
     }
 }
 
@@ -312,6 +364,13 @@ load (const char *file_name, void (**eip) (void), void **esp)
       goto done; 
     }
 
+  struct process *p = thread_current ()->process;
+  struct fd *fd = malloc (sizeof (struct fd));
+  fd->fd = p->max_fd++;
+  fd->file = file;
+  file_deny_write(file);
+  list_push_front (&p->files, &fd->elem);
+
   /* Read and verify executable header. */
   if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
       || memcmp (ehdr.e_ident, "\177ELF\1\1\1", 7)
@@ -395,7 +454,6 @@ load (const char *file_name, void (**eip) (void), void **esp)
 
  done:
   /* We arrive here whether the load is successful or not. */
-  file_close (file);
   return success;
 }
 
@@ -545,4 +603,20 @@ install_page (void *upage, void *kpage, bool writable)
      address, then map our page there. */
   return (pagedir_get_page (t->pagedir, upage) == NULL
           && pagedir_set_page (t->pagedir, upage, kpage, writable));
+}
+
+void close_all_files (struct process *p)
+{
+  if (p == NULL)
+    return;
+  
+  struct list_elem *e = list_begin (&p->files);
+  while (e != list_end (&p->files))
+    {
+      struct fd *fd = list_entry (e, struct fd, elem);
+      if (fd->file != NULL)
+        file_close (fd->file);
+      e = list_remove (e);
+      free (fd);
+    }
 }
